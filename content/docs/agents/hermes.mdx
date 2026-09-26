@@ -1,12 +1,54 @@
 ---
 title: Hermes
-description: Connect Hermes to Cortex over MCP with an API key.
+description: Set up Cortex as Hermes' native memory provider, or connect over MCP instead.
 icon: Bot
 ---
 
-Hermes talks to Cortex over MCP, authenticated with an API key. Create one on the
+Hermes has two ways to talk to Cortex — a native memory-provider plugin (recommended: Hermes
+calls into it automatically every turn) and a generic MCP tool registration (Cortex is one tool
+among others the agent chooses to call). Pick one per Hermes profile — running both against the
+same profile risks writing every turn twice.
+
+## Native memory provider (recommended)
+
+The [`cortexlayer-hermes-plugin`](https://github.com/Cortex-Layer/cortexlayer-hermes-plugin) repo
+implements Hermes' `MemoryProvider` interface directly: memory is recalled before each LLM call
+and saved after, with no tool call for the agent to remember to make.
+
+```bash
+hermes plugins install cortexlayer
+```
+
+<Callout title="Not in the catalog yet">
+  Until the plugin is submitted to Hermes' plugin catalog, install it manually as a directory
+  plugin instead — clone the repo's `plugins/memory/cortex/` into `$HERMES_HOME/plugins/cortex/`
+  (or `./.hermes/plugins/cortex/` for a project-local install) and run
+  `pip install cortexlayer` in whatever Python environment Hermes runs in. Full steps in the
+  [repo README](https://github.com/Cortex-Layer/cortexlayer-hermes-plugin#install).
+</Callout>
+
+Then run `hermes memory setup`, select `cortexlayer`, and paste an API key created on the
 [**Setup**](https://www.cortexlayer.net/app/setup) or [**Keys**](https://www.cortexlayer.net/app/keys)
-page of the Cortex web app, then:
+page of the Cortex web app. That's the only configuration — the key is written to
+`~/.hermes/.env` as `CORTEX_API_KEY` and is what identifies your account; there's nothing else to
+map or configure.
+
+This is Platform mode only for now: it talks to the hosted `api.cortexlayer.net`, not a
+self-hosted server, and there's no local/offline mode.
+
+### What Hermes gets
+
+The same five tools as the MCP route below (`memory_add`, `memory_retrieve`, `memory_update`,
+`memory_delete`, `memory_relink`), available for Hermes to call explicitly — plus two things the
+MCP route can't do: automatic recall before every turn (no tool call needed) and automatic saving
+after every turn, including a checkpoint pass before Hermes compresses/truncates old context, so
+older turns aren't lost to compaction the way they would be otherwise.
+
+## MCP tool registration (alternative)
+
+Hermes can also talk to Cortex over MCP like [Claude Code, Cursor or any other MCP
+client](/docs/mcp/connect) — Cortex shows up as a set of tools the agent decides to call, rather
+than something Hermes calls into automatically. Create an API key the same way, then:
 
 ```bash title="~/.hermes/.env"
 CORTEX_API_KEY=YOUR_API_KEY
@@ -26,19 +68,15 @@ Check the connection:
 hermes mcp test cortex
 ```
 
-## What Hermes gets
-
-Five tools, all scoped to your account: `memory_add`, `memory_retrieve`, `memory_update`,
-`memory_delete` and `memory_relink`. The web dashboard is read-only, so adding, editing and
-deleting memories happens through Hermes (or another connected agent).
+Self-hosting Cortex instead of using the hosted server? Swap `mcp.cortexlayer.net` for your own
+server's URL — this route (unlike the native plugin above) works against a self-hosted server
+today.
 
 ## Try it
 
 1. Tell Hermes: *"Use Cortex to remember that I prefer dark mode."*
-2. In a new conversation, ask: *"What do I prefer for my editor theme?"*
+2. In a new conversation, ask: *"What do I prefer for my editor theme?"* (with the native plugin,
+   you don't even need to ask it to check memory first — it already will have.)
 3. Open [Memory](https://www.cortexlayer.net/app/memory) or
    [Graph](https://www.cortexlayer.net/app/graph) in the web app to see what was stored and how
    memories link together.
-
-Self-hosting Cortex instead of using the hosted server? Swap `mcp.cortexlayer.net` for your own
-server's URL.
