@@ -7,7 +7,7 @@ export const docsImageRoute = '/og/docs';
 export const docsContentRoute = '/llms.mdx/docs';
 
 export const gitConfig = {
-  user: 'mikeest1972',
+  user: 'Cortex-Layer',
   repo: 'cortexlayer-python',
   branch: 'main',
 };

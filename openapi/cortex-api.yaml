@@ -41,7 +41,7 @@ info:
     logged server-side, never returned in the body).
   license:
     name: Apache-2.0
-    url: https://github.com/mikeest1972/cortexlayer-python/blob/main/LICENSE
+    url: https://github.com/Cortex-Layer/cortexlayer-python/blob/main/LICENSE
 servers:
   - url: https://api.cortexlayer.net
     description: Hosted Cortex server
