@@ -1,0 +1,8 @@
+{
+  "title": "Graph",
+  "description": "Full-graph and single-page-neighborhood views for visualization.",
+  "pages": [
+    "getGraph",
+    "getPageNeighbors"
+  ]
+}

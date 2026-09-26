@@ -1,0 +1,118 @@
+---
+title: Hosted — CortexClient
+description: Talk to a running Cortex server with the cortexlayer Python client.
+---
+
+`CortexClient` is a thin client for a running Cortex server — the hosted one at
+`api.cortexlayer.net`, or your own self-hosted instance. It needs only `httpx`.
+
+```bash
+pip install cortexlayer
+```
+
+```python
+from cortexlayer import CortexClient
+
+client = CortexClient(api_key="...")  # or set CORTEX_API_KEY
+
+client.search("Where does Alice live?", limit=5)
+# [SearchResult(id='…', title='Alice moved to Lisbon in March.', via='direct', …),
+#  SearchResult(id='…', title='…', via='link', linked_from='…'), …]
+
+client.get_all(limit=50)  # browse pages
+client.get(page_id)       # one page + its links
+```
+
+Create a key in the Cortex web app ([**Keys**](https://www.cortexlayer.net/app/keys)). Point at a
+self-hosted server with `base_url="http://localhost:8000"` (or `CORTEX_BASE_URL`).
+
+There is no `user_id` argument on `CortexClient` — each API key belongs to exactly one user. (The
+embedded [`Memory`](/docs/sdk/embedded) takes `user_id` per call instead, since one store there can
+hold many users.)
+
+## Writes
+
+```python
+client.add("I moved to Lisbon in March.")  # long text is chunked into several pages
+client.update(page_id, "…")
+client.delete(page_id)
+client.relink()  # re-run the batch linking pass after adding several
+```
+
+Writes need a server with REST write endpoints (the hosted server has them). Against an older
+self-hosted server these four raise `WritesNotSupportedError`; reads, search, graph and usage work
+on every version.
+
+## Async
+
+```python
+from cortexlayer import AsyncCortexClient
+
+async with AsyncCortexClient(api_key="...") as client:
+    hits = await client.search("Where does Alice live?")
+```
+
+Same methods, awaited.
+
+## Configuration
+
+```python
+CortexClient(
+    api_key=None,       # or CORTEX_API_KEY
+    base_url=None,       # or CORTEX_BASE_URL; default https://api.cortexlayer.net
+    timeout=30.0,
+    max_retries=2,
+    http_client=None,    # bring your own httpx.Client (proxies, transports, tests)
+)
+```
+
+The key is never included in `repr()`. Use the client as a context manager (or call `.close()`) to
+release connections; a client you pass in via `http_client` is never closed for you.
+
+## Results
+
+Plain frozen dataclasses (no pydantic). Unknown fields from a newer server are ignored.
+
+| Call | Returns |
+|---|---|
+| `search(query, limit=4, expand_links=True)` | `list[SearchResult]` — `id, title, snippet, score, via, linked_from` |
+| `get(id)` | `Page` — `id, title, content, links, linked_from, degree, created_at` |
+| `get_all(query=None, limit=50, offset=0)` | `PageList` — `pages, total, limit, offset` |
+| `add(text, timestamp=None)` | `AddResult` — `page_ids` |
+| `me()` | `Account` — `user_id, account_name` |
+| `usage(group_by="day", since=None, until=None)` | `Usage` — your own API usage, by `day` / `key` / `operation` |
+| `graph(limit=None)`, `neighbors(id, depth=1)` | `Graph` — `nodes, edges, truncated, stale` |
+
+`via` is `"direct"` for a vector hit and `"link"` for a page pulled in by link-expansion
+(`linked_from` is the page that led to it). `score` semantics depend on the backend: on `raw` it is
+a distance (lower is closer); on `facts` it is the fused semantic + keyword + entity score (higher
+is closer). Compare scores within one store or server, not across.
+
+## Errors
+
+Every failure is a `CortexError`:
+
+| Exception | When |
+|---|---|
+| `InvalidRequestError` (also a `ValueError`) | bad arguments (caught before any request) or a server 400 |
+| `AuthenticationError` | 401 — key missing, wrong or revoked |
+| `PermissionDeniedError` | 403 — `.code` is the server's reason (`session_required`, …) |
+| `NotFoundError` | 404 — unknown page (another user's page looks the same) |
+| `ConflictError` | 409 |
+| `RateLimitError` | 429 — `.retry_after` seconds if sent |
+| `ServerError` | 5xx or an unreadable reply |
+| `ConnectionError` | no response (DNS, refused, timeout) |
+| `WritesNotSupportedError` | the server is too old to have REST write endpoints |
+| `CortexConfigError` | bad client configuration (e.g. no API key) |
+
+Reads and search are retried (default 2×, with backoff) on connection errors and 502/503/504.
+**Writes are never retried**, so an `add` can't be applied twice.
+
+```python
+from cortexlayer import CortexClient, NotFoundError
+
+try:
+    client.get("does-not-exist")
+except NotFoundError:
+    ...
+```

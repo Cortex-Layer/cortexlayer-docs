@@ -1,34 +1,46 @@
 {
   "name": "cortexlayer-docs",
-  "version": "0.0.32",
+  "version": "0.1.0",
   "private": true,
   "scripts": {
-    "build": "next build",
-    "dev": "next dev",
+    "generate:api": "tsx scripts/build-openapi-json.mts && tsx scripts/generate-docs.mts",
+    "predev": "pnpm run generate:api",
+    "prebuild": "pnpm run generate:api",
+    "build": "next build --webpack",
+    "dev": "next dev --webpack",
     "start": "next start",
     "types:check": "next typegen && tsc --noEmit",
-    "lint": "eslint"
+    "lint": "eslint",
+    "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
+    "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
+    "cf-typegen": "wrangler types"
   },
   "dependencies": {
     "cn": "^0.3.0",
     "fumadocs-core": "16.15.13",
     "fumadocs-mdx": "15.4.3",
+    "fumadocs-openapi": "^12.0.3",
     "fumadocs-ui": "npm:@fumadocs/base-ui@16.15.13",
     "lucide-react": "^1.47.0",
     "next": "16.3.5",
     "react": "^19.3.0",
-    "react-dom": "^19.3.0"
+    "react-dom": "^19.3.0",
+    "xml-js": "1.6.11",
+    "yaml": "^2.9.1"
   },
   "devDependencies": {
+    "@opennextjs/cloudflare": "^1.20.6",
     "@tailwindcss/postcss": "^4.3.3",
     "@types/mdx": "^2.0.14",
     "@types/node": "^26.6.1",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
+    "eslint": "^9.39.4",
+    "eslint-config-next": "16.3.5",
     "postcss": "^8.5.28",
     "tailwindcss": "^4.3.3",
-    "typescript": "^7.0.2",
-    "eslint": "^9.39.4",
-    "eslint-config-next": "16.3.5"
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "wrangler": "^4.136.2"
   }
 }

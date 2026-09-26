@@ -1,0 +1,9 @@
+{
+  "title": "Account",
+  "description": "The signed-in web account — provisioning, `/v1/me`, claiming a legacy `user_id`.",
+  "pages": [
+    "getMe",
+    "provisionAccount",
+    "claimAccount"
+  ]
+}

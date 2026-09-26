@@ -1,0 +1,12 @@
+{
+  "pages": [
+    "health",
+    "account",
+    "keys",
+    "consent",
+    "search",
+    "pages",
+    "graph",
+    "usage"
+  ]
+}

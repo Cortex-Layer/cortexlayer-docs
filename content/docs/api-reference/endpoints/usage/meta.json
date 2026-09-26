@@ -1,0 +1,7 @@
+{
+  "title": "Usage",
+  "description": "The caller's own API usage, aggregated.",
+  "pages": [
+    "getUsage"
+  ]
+}

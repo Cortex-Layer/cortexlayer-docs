@@ -1,0 +1,12 @@
+{
+  "title": "Pages",
+  "description": "Browse, create, edit and delete memories (pages).",
+  "pages": [
+    "listPages",
+    "createPage",
+    "getPage",
+    "updatePage",
+    "deletePage",
+    "relink"
+  ]
+}

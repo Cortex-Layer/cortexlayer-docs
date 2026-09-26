@@ -1,0 +1,1127 @@
+openapi: 3.1.0
+info:
+  title: Cortex REST API
+  version: "1.0"
+  summary: The REST API behind the Cortex web app and the cortexlayer Python client.
+  description: |
+    `/v1/*` — the REST surface `cortexlayer-frontend` and the `cortexlayer` Python client
+    (`CortexClient`) both call. Same process, same per-user scoping, as the MCP server's five
+    memory tools; this is the HTTP door into the same store.
+
+    If you're using Python, reach for [`CortexClient`](/docs/sdk/hosted) instead of calling this
+    directly — it wraps every endpoint here with retries, typed results and error classes. This
+    reference is for anything else: a different language, a browser app, or curl.
+
+    ## Auth
+
+    Send `Authorization: Bearer <credential>`. Three credential kinds, checked in this order:
+
+    1. **OAuth access token** — from the MCP OAuth flow ([Connect Claude Desktop, Cursor or any
+       MCP client](/docs/mcp/connect)).
+    2. **Static API key** (`sk-...`) — the common case for scripts and the Python client. Create
+       one in the web app's **Keys** page.
+    3. **Firebase ID token** — web sign-in only, `/v1/*` only (never accepted on `/mcp`). What the
+       Cortex web app itself sends.
+
+    Whose data you touch, in order: the credential's user > an explicit `user_id` param (only on
+    endpoints that take one — a mismatch is `403`, never silent re-routing) > the server's default
+    user (self-hosted, no keys configured).
+
+    A handful of endpoints — minting/listing/revoking keys, claiming a legacy account, the OAuth
+    consent screen — are **web session only** (Firebase token): a static key or OAuth token gets
+    `403 session_required`, so a leaked agent credential can never mint more credentials. Each such
+    operation says so.
+
+    ## Errors
+
+    Every non-2xx response is a JSON body `{"error": "<message>"}`. Statuses are documented per
+    endpoint; a few apply broadly: `401` missing/invalid/revoked credential, `403` valid credential
+    not allowed to do this, `404` unknown id (or another user's id — always looks the same, never
+    leaks existence), `413` request body too large, `5xx` server or backend failure (details are
+    logged server-side, never returned in the body).
+  license:
+    name: Apache-2.0
+    url: https://github.com/mikeest1972/cortexlayer-python/blob/main/LICENSE
+servers:
+  - url: https://api.cortexlayer.net
+    description: Hosted Cortex server
+  - url: http://localhost:8000
+    description: Self-hosted (default port)
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Health
+    description: Unauthenticated liveness probe.
+  - name: Account
+    description: The signed-in web account — provisioning, `/v1/me`, claiming a legacy `user_id`.
+  - name: Keys
+    description: Self-serve API key management. Web session only.
+  - name: Consent
+    description: >-
+      Browser leg of the MCP OAuth flow, driven by the web app's authorize screen. Not typically
+      called directly by third-party integrations.
+  - name: Search
+    description: Semantic search with link-expansion.
+  - name: Pages
+    description: Browse, create, edit and delete memories (pages).
+  - name: Graph
+    description: Full-graph and single-page-neighborhood views for visualization.
+  - name: Usage
+    description: The caller's own API usage, aggregated.
+
+paths:
+  /health:
+    get:
+      operationId: health
+      tags: [Health]
+      summary: Liveness probe
+      description: >-
+        Reports the process only, not downstream Ollama (the answer/compress path degrades
+        gracefully instead of failing when a reader is unreachable). Unauthenticated by design —
+        monitors hold no key. Also the Docker `HEALTHCHECK`.
+      security: []
+      responses:
+        "200":
+          description: The process is up.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+              examples:
+                default:
+                  value: { status: "ok", backend: "facts" }
+
+  /v1/me:
+    get:
+      operationId: getMe
+      tags: [Account]
+      summary: Validate the credential, return the account
+      description: What the frontend's connect screen calls to check a key/token is good.
+      responses:
+        "200":
+          description: The account the credential belongs to.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Account"
+              examples:
+                default:
+                  value: { user_id: "alice", account_name: "alice" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /v1/account:
+    post:
+      operationId: provisionAccount
+      tags: [Account]
+      summary: Create (idempotently) the signed-in web user's account
+      description: >-
+        Firebase ID token only. Needs a verified, allowlisted email. Existing accounts always
+        succeed; a brand-new one is refused once the server's account cap is reached. Every other
+        `/v1/*` call for a web session answers `403 no_account` until this has been called once.
+      requestBody:
+        required: false
+        description: No body — identity comes entirely from the Firebase ID token.
+      responses:
+        "200":
+          description: The account now exists (created or already did).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountIdentity"
+              examples:
+                default:
+                  value: { user_id: "f-3a9c1e2b", email: "alice@example.com" }
+        "401":
+          description: Missing or invalid Firebase ID token.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: >-
+            `email_not_verified` (unverified address), `not_invited` (email not on the
+            allowlist — re-checked on every call), or `signups_full` (new account, server at its
+            account cap).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /v1/account/claim:
+    post:
+      operationId: claimAccount
+      tags: [Account]
+      summary: Attach a legacy user_id to the signed-in account
+      description: >-
+        Web session only. Proves ownership of a pre-existing, hand-issued `user_id` with one of
+        its API keys, then attaches that `user_id` (and its data) to the signed-in Firebase
+        account. Idempotent for the account that already claimed it; the old key keeps working
+        afterward.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [key]
+              properties:
+                key:
+                  type: string
+                  description: An existing API key for the `user_id` being claimed.
+              examples:
+                default:
+                  value: { key: "sk-..." }
+      responses:
+        "200":
+          description: Claimed. The credential's account now owns this `user_id` and its data.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountIdentity"
+              examples:
+                default:
+                  value: { user_id: "alice", email: "alice@example.com" }
+        "400":
+          description: "`key` missing, blank, or not a string."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: >-
+            `session_required` (a static key or OAuth token was sent, not a web session), or
+            `invalid_key` (the key in the body is unknown or revoked).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: >-
+            `store_not_empty` (this account already has pages — never merged), or
+            `already_claimed` (this account already claimed a `user_id`, or that `user_id` is
+            already claimed by another account).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /v1/keys:
+    get:
+      operationId: listKeys
+      tags: [Keys]
+      summary: List the signed-in user's API keys
+      description: Web session only. Never returns key or hash material — only metadata.
+      responses:
+        "200":
+          description: The account's keys, newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [keys]
+                properties:
+                  keys:
+                    type: array
+                    items: { $ref: "#/components/schemas/ApiKey" }
+              examples:
+                default:
+                  value:
+                    keys:
+                      - id: "key_ab12cd34ef56"
+                        label: "hermes"
+                        created_at: "2026-08-01T12:00:00Z"
+                        last_used: null
+                        revoked: false
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/SessionRequired"
+    post:
+      operationId: createKey
+      tags: [Keys]
+      summary: Mint a new API key
+      description: >-
+        Web session only. The plaintext key is returned exactly once, with
+        `Cache-Control: no-store` — it is never retrievable again after this response.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                label:
+                  type: string
+                  maxLength: 64
+                  description: Optional, plain text. Defaults to `"API key"`.
+              examples:
+                default:
+                  value: { label: "hermes" }
+      responses:
+        "200":
+          description: Key created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreatedKey"
+              examples:
+                default:
+                  value:
+                    id: "key_ab12cd34ef56"
+                    label: "hermes"
+                    key: "sk-..."
+                    created_at: "2026-09-22T12:00:00Z"
+        "400":
+          description: "`label` isn't plain text, or exceeds 64 characters."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/SessionRequired"
+        "409":
+          description: "`key_limit` — past the server's active-keys-per-user cap (revoking frees a slot)."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /v1/keys/{key_id}:
+    delete:
+      operationId: revokeKey
+      tags: [Keys]
+      summary: Revoke one API key
+      description: Web session only.
+      parameters:
+        - name: key_id
+          in: path
+          required: true
+          schema: { type: string }
+          example: key_ab12cd34ef56
+      responses:
+        "200":
+          description: Revoked.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [revoked]
+                properties:
+                  revoked: { type: string }
+              examples:
+                default:
+                  value: { revoked: "key_ab12cd34ef56" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/SessionRequired"
+        "404":
+          description: Unknown id, or it belongs to another user.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /v1/consent/{session}:
+    get:
+      operationId: getConsentDetails
+      tags: [Consent]
+      summary: What the approval screen shows
+      description: >-
+        Web session only. Doesn't consume the session. Exposes no secrets — no PKCE challenge, no
+        full redirect URI (just its host).
+      parameters:
+        - name: session
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Pending authorization request details.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [client_id, scope, redirect_host]
+                properties:
+                  client_id: { type: string }
+                  scope: { type: string }
+                  redirect_host: { type: string }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/SessionRequired"
+        "404":
+          description: Unknown or expired approval request.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /v1/consent/approve:
+    post:
+      operationId: approveConsent
+      tags: [Consent]
+      summary: Approve a pending OAuth authorization
+      description: >-
+        Web session only. The session is consumed on any outcome (never retryable). Sessions
+        expire after 10 minutes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [session]
+              properties:
+                session: { type: string }
+      responses:
+        "200":
+          description: Approved — navigate the browser to `redirect_url` (carries the auth code).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConsentRedirect" }
+        "400":
+          description: "`session` missing or not a non-empty string."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/SessionRequired"
+        "404":
+          description: Unknown or expired approval request.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /v1/consent/deny:
+    post:
+      operationId: denyConsent
+      tags: [Consent]
+      summary: Decline a pending OAuth authorization
+      description: Web session only. `redirect_url` carries `error=access_denied`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [session]
+              properties:
+                session: { type: string }
+      responses:
+        "200":
+          description: Denied — navigate the browser to `redirect_url`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConsentRedirect" }
+        "400":
+          description: "`session` missing or not a non-empty string."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/SessionRequired"
+        "404":
+          description: Unknown or expired approval request.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /v1/search:
+    post:
+      operationId: search
+      tags: [Search]
+      summary: Semantic search with link-expansion
+      description: >-
+        Vector search over the caller's pages; when `expand_links` is true (the default), each
+        seed hit's outgoing links are followed to pull in related pages the query didn't directly
+        match. This is what the Python client's `.search()` calls.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [query]
+              properties:
+                query:
+                  type: string
+                  minLength: 1
+                  description: The search query.
+                top_k:
+                  type: integer
+                  minimum: 1
+                  maximum: 20
+                  default: 4
+                expand_links:
+                  type: boolean
+                  default: true
+                  description: "`false` returns a flat top-k with no `via: link` rows."
+                user_id:
+                  type: string
+                  description: >-
+                    Only meaningful for a server-default credential (self-hosted, open mode) or to
+                    confirm identity explicitly; must match the credential's user otherwise (`403`).
+              examples:
+                default:
+                  value: { query: "Who directed Inception?", top_k: 4, expand_links: true }
+      responses:
+        "200":
+          description: Ranked hits.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [results]
+                properties:
+                  results:
+                    type: array
+                    items: { $ref: "#/components/schemas/SearchResult" }
+              examples:
+                default:
+                  value:
+                    results:
+                      - id: "a91f2c"
+                        title: "The director of Inception..."
+                        snippet: "The director of Inception..."
+                        score: 0.42
+                        source: "private"
+                        via: "direct"
+                      - id: "c77b0e"
+                        title: "Christopher Nolan was born..."
+                        snippet: "Christopher Nolan was born..."
+                        score: 0.0
+                        source: "private"
+                        via: "link"
+                        linked_from: "a91f2c"
+        "400":
+          description: "`query` missing/blank, `top_k` not an integer 1..20, or `expand_links` not a boolean."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /v1/pages:
+    get:
+      operationId: listPages
+      tags: [Pages]
+      summary: Browse the caller's pages
+      description: >-
+        Paginated dump, optionally filtered by a case-insensitive substring (`q`). For ranked
+        semantic matches, use [Search](#tag/Search) instead. Scans up to 5000 pages; `total`
+        counts matches within that cap.
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+        - name: q
+          in: query
+          schema: { type: string }
+          description: Case-insensitive substring filter over page text.
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 500, default: 50 }
+        - name: offset
+          in: query
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        "200":
+          description: A page of results.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PageList"
+        "400":
+          description: "`limit`/`offset` not integers in range, or a malformed `user_id`."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    post:
+      operationId: createPage
+      tags: [Pages]
+      summary: Add a memory
+      description: >-
+        Same as the `memory_add` MCP tool. Long text is chunked into several pages, so this can
+        return more than one id. **Does not relink** — call [Relink](#operation/relink) after a
+        batch. On the `facts` backend, text goes through LLM fact extraction, so this can be
+        slower and the returned ids are fact ids.
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text:
+                  type: string
+                  minLength: 1
+                  description: Server-configured max length (`CORTEX_MAX_WRITE_CHARS`, default 32000 chars).
+                timestamp:
+                  type: string
+                  maxLength: 64
+                  description: >-
+                    Optional, e.g. `"8 May, 2023"`. Prefixed to undated lines and stored as
+                    `created_at`.
+              examples:
+                default:
+                  value: { text: "Alice moved to Lisbon in March.", timestamp: "8 May, 2023" }
+      responses:
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AddResult" }
+              examples:
+                default:
+                  value: { page_ids: ["a91f2c"] }
+        "400":
+          description: "`text` missing/blank/too long, or `timestamp` invalid."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: >-
+            Wrong `user_id`, or (web session only) `web_writes_disabled` — the server turned off
+            writes over a browser session.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /v1/pages/{page_id}:
+    get:
+      operationId: getPage
+      tags: [Pages]
+      summary: Get one page
+      parameters:
+        - $ref: "#/components/parameters/PageId"
+        - $ref: "#/components/parameters/UserId"
+      responses:
+        "200":
+          description: The page, with its links.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Page" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: Unknown id, or it belongs to another user (fails closed — looks identical either way).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    patch:
+      operationId: updatePage
+      tags: [Pages]
+      summary: Replace a page's text
+      description: >-
+        Re-embeds and re-extracts entities; keeps the id. Links can go stale — relink after batch
+        edits.
+      parameters:
+        - $ref: "#/components/parameters/PageId"
+        - $ref: "#/components/parameters/UserId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text: { type: string, minLength: 1 }
+              examples:
+                default:
+                  value: { text: "Alice moved to Porto." }
+      responses:
+        "200":
+          description: Updated.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WriteOk" }
+        "400":
+          description: "`text` missing, blank, or too long."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Wrong `user_id`, or `web_writes_disabled` for a web session.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Unknown id, or it belongs to another user.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "500":
+          $ref: "#/components/responses/ServerError"
+    delete:
+      operationId: deletePage
+      tags: [Pages]
+      summary: Delete a page
+      description: >-
+        A repeated delete of the same id is a `404` (it's already gone). Links from other pages
+        that pointed at it are skipped by retrieval and cleaned up by the next relink.
+      parameters:
+        - $ref: "#/components/parameters/PageId"
+        - $ref: "#/components/parameters/UserId"
+      responses:
+        "200":
+          description: Deleted.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WriteOk" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Wrong `user_id`, or `web_writes_disabled` for a web session.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Unknown id, or it belongs to another user.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /v1/relink:
+    post:
+      operationId: relink
+      tags: [Pages]
+      summary: Re-run the batch linking pass
+      description: >-
+        Links are batch-only, never written per insert — call this after adding or editing
+        several memories. No request body.
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+      responses:
+        "200":
+          description: Linking pass complete.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RelinkResult" }
+              examples:
+                default:
+                  value: { pages: 12, links_written: 9 }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Wrong `user_id`, or `web_writes_disabled` for a web session.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /v1/graph:
+    get:
+      operationId: getGraph
+      tags: [Graph]
+      summary: Full-graph dump
+      description: Capped nodes + directed edges, for the graph overview.
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 5000, default: 500 }
+      responses:
+        "200":
+          description: The graph (possibly truncated).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Graph" }
+        "400":
+          description: "`limit` out of range."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /v1/pages/{page_id}/neighbors:
+    get:
+      operationId: getPageNeighbors
+      tags: [Graph]
+      summary: N-hop neighborhood of one page
+      description: Undirected expansion from one page — click-to-expand in a graph view.
+      parameters:
+        - $ref: "#/components/parameters/PageId"
+        - $ref: "#/components/parameters/UserId"
+        - name: depth
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 3, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 5000, default: 200 }
+      responses:
+        "200":
+          description: The neighborhood.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Neighborhood" }
+        "400":
+          description: "`depth` or `limit` out of range."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: Unknown page id.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /v1/usage:
+    get:
+      operationId: getUsage
+      tags: [Usage]
+      summary: The caller's own usage, aggregated
+      description: >-
+        Any credential kind. The query is filtered to the credential's user in SQL — there is no
+        way to read another account's rows. Never includes memory content: only timestamp,
+        credential, operation, ok/error and latency are logged.
+      parameters:
+        - name: group_by
+          in: query
+          schema: { type: string, enum: [day, key, operation], default: day }
+        - name: since
+          in: query
+          schema: { type: string, format: date-time }
+          description: ISO date or datetime, UTC. Defaults to 30 days ago.
+        - name: until
+          in: query
+          schema: { type: string, format: date-time }
+          description: ISO date or datetime, UTC, exclusive. Defaults to now.
+      responses:
+        "200":
+          description: Aggregated usage.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UsageSummary" }
+              examples:
+                default:
+                  value:
+                    group_by: "key"
+                    since: "2026-08-23T00:00:00Z"
+                    until: "2026-09-22T00:00:00Z"
+                    total_calls: 42
+                    total_errors: 3
+                    buckets:
+                      - key: "key_ab12cd34ef56"
+                        label: "hermes"
+                        calls: 40
+                        errors: 2
+                        avg_latency_ms: 118.4
+        "400":
+          description: Bad `group_by`, an unparseable date, or `since >= until`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: >-
+        An OAuth access token, a static API key, or (REST-only) a Firebase ID token. See the
+        Auth section above.
+
+  parameters:
+    PageId:
+      name: page_id
+      in: path
+      required: true
+      schema: { type: string }
+      example: a91f2c
+    UserId:
+      name: user_id
+      in: query
+      schema: { type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,62}[A-Za-z0-9]?$" }
+      description: >-
+        Only needed against a server-default credential (self-hosted, no keys configured); must
+        match the credential's own user otherwise, or this is `403`.
+
+  responses:
+    Unauthorized:
+      description: Missing, invalid, or revoked credential.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Forbidden:
+      description: Valid credential, but `user_id` doesn't match it.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    SessionRequired:
+      description: "`session_required` — a static key or OAuth token was sent; this endpoint needs a web session."
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    PayloadTooLarge:
+      description: Request body over the server's size cap.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    ServerError:
+      description: Backend failure (embedder/LLM down, disk). Details are logged server-side, never returned here.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+
+    Health:
+      type: object
+      required: [status, backend]
+      properties:
+        status: { type: string, enum: [ok] }
+        backend: { type: string, enum: [raw, facts] }
+
+    Account:
+      type: object
+      required: [user_id, account_name]
+      properties:
+        user_id: { type: string }
+        account_name:
+          type: string
+          description: The web identity's email if it has one, else the `user_id`.
+
+    AccountIdentity:
+      type: object
+      required: [user_id, email]
+      properties:
+        user_id: { type: string }
+        email: { type: string, format: email }
+
+    ApiKey:
+      type: object
+      required: [id, label, created_at, last_used, revoked]
+      properties:
+        id: { type: string, example: key_ab12cd34ef56 }
+        label: { type: [string, "null"] }
+        created_at: { type: string, format: date-time }
+        last_used: { type: [string, "null"], format: date-time }
+        revoked: { type: boolean }
+
+    CreatedKey:
+      allOf:
+        - $ref: "#/components/schemas/ApiKey"
+        - type: object
+          required: [key]
+          properties:
+            key:
+              type: string
+              description: Plaintext — shown here once, never again.
+      # ApiKey's last_used/revoked don't apply at creation time; kept for shape parity with GET /v1/keys.
+
+    ConsentRedirect:
+      type: object
+      required: [redirect_url]
+      properties:
+        redirect_url:
+          type: string
+          format: uri
+          description: Where the browser should navigate next (carries the auth code, or `error=access_denied`).
+
+    SearchResult:
+      type: object
+      required: [id, title, snippet, score, source, via]
+      properties:
+        id: { type: string }
+        title:
+          type: string
+          description: First non-empty line of the page (up to 120 chars).
+        snippet:
+          type: string
+          description: First ~200 chars of the page text, whitespace-collapsed.
+        score:
+          type: number
+          description: >-
+            Backend-dependent: on `raw`, a vector distance (lower is closer); on `facts`, a fused
+            semantic + keyword + entity score (higher is closer). Compare within one server, not
+            across.
+        source:
+          type: string
+          enum: [private]
+          description: Always `"private"` — there is no shared layer yet.
+        via:
+          type: string
+          enum: [direct, link]
+          description: "`direct`: matched the query. `link`: pulled in via link-expansion."
+        linked_from:
+          type: string
+          description: Present only when `via` is `"link"` — the seed page that led here.
+
+    Page:
+      type: object
+      required: [id, title, content, snippet, links, linked_from, degree, created_at]
+      properties:
+        id: { type: string }
+        title:
+          type: string
+          description: First non-empty line of the text (up to 120 chars).
+        content: { type: string }
+        snippet:
+          type: string
+          description: First ~200 chars, whitespace-collapsed.
+        links:
+          type: array
+          items: { type: string }
+          description: Outgoing links — other pages this one points to.
+        linked_from:
+          type: array
+          items: { type: string }
+          description: Incoming links — pages that point to this one.
+        degree:
+          type: integer
+          description: Distinct pages connected either way (a mutual link counts once).
+        created_at: { type: string, format: date-time }
+
+    PageList:
+      type: object
+      required: [pages, total, limit, offset]
+      properties:
+        pages:
+          type: array
+          items: { $ref: "#/components/schemas/Page" }
+        total:
+          type: integer
+          description: Matches within the 5000-page scan cap — not necessarily the account's true total.
+        limit: { type: integer }
+        offset: { type: integer }
+
+    AddResult:
+      type: object
+      required: [page_ids]
+      properties:
+        page_ids:
+          type: array
+          items: { type: string }
+          description: More than one when the text was chunked (or the `facts` backend extracted several facts).
+
+    WriteOk:
+      type: object
+      required: [ok, page_id]
+      properties:
+        ok: { type: boolean, enum: [true] }
+        page_id: { type: string }
+
+    RelinkResult:
+      type: object
+      required: [pages, links_written]
+      properties:
+        pages: { type: integer, description: Pages scanned. }
+        links_written: { type: integer, description: Links written this pass. }
+
+    GraphNode:
+      type: object
+      required: [id, title, snippet, degree]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        snippet: { type: string }
+        degree:
+          type: integer
+          description: Undirected link count within the returned window (a mutual pair counts twice here).
+
+    GraphEdge:
+      type: object
+      required: [source, target]
+      properties:
+        source: { type: string }
+        target: { type: string }
+
+    Graph:
+      type: object
+      required: [nodes, edges, truncated, stale]
+      properties:
+        nodes:
+          type: array
+          items: { $ref: "#/components/schemas/GraphNode" }
+        edges:
+          type: array
+          items: { $ref: "#/components/schemas/GraphEdge" }
+        truncated:
+          type: boolean
+          description: True when more nodes exist beyond `limit`.
+        stale:
+          type: boolean
+          description: >-
+            Always `false` — links are persisted by the linking pass, so the graph is never behind
+            the store. Kept for older clients.
+
+    Neighborhood:
+      allOf:
+        - $ref: "#/components/schemas/Graph"
+        - type: object
+          required: [start]
+          properties:
+            start:
+              type: string
+              description: The page id this neighborhood was expanded from.
+
+    UsageBucket:
+      type: object
+      required: [key, calls, errors, avg_latency_ms]
+      properties:
+        key:
+          type: string
+          description: >-
+            The bucket's identity — meaning depends on `group_by`: a `YYYY-MM-DD` date, an MCP
+            tool/route operation name, or a credential (`key_...` id, `oauth:<client_id>`, or
+            `"firebase"`).
+        label:
+          type: string
+          description: Present only for `group_by=key` when the key has one — its human label.
+        calls: { type: integer }
+        errors: { type: integer }
+        avg_latency_ms: { type: [number, "null"] }
+
+    UsageSummary:
+      type: object
+      required: [group_by, since, until, total_calls, total_errors, buckets]
+      properties:
+        group_by: { type: string, enum: [day, key, operation] }
+        since: { type: string, format: date-time }
+        until: { type: string, format: date-time }
+        total_calls: { type: integer }
+        total_errors: { type: integer }
+        buckets:
+          type: array
+          items: { $ref: "#/components/schemas/UsageBucket" }

@@ -1,0 +1,23 @@
+/**
+ * Deploy target for the docs site (task 0081). Built with @opennextjs/cloudflare, since
+ * Fumadocs is a standard Next.js app (not vinext, which the main site uses instead).
+ *
+ * https://developers.cloudflare.com/workers/wrangler/configuration/
+ */
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "cortexlayer-docs",
+	"main": ".open-next/worker.js",
+	"compatibility_date": "2026-09-20",
+	"compatibility_flags": ["nodejs_compat"],
+	"assets": {
+		"directory": ".open-next/assets",
+		"binding": "ASSETS"
+	},
+	"observability": {
+		"enabled": true
+	},
+	// Attach once the domain is added to this Cloudflare account and DNS is pointed here
+	// (dashboard: Workers & Pages -> cortexlayer-docs -> Custom Domains -> docs.cortexlayer.net).
+	"routes": [{ "pattern": "docs.cortexlayer.net", "custom_domain": true }]
+}

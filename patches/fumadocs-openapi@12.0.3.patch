@@ -1,0 +1,30 @@
+diff --git a/dist/requests/media/adapter.js b/dist/requests/media/adapter.js
+index 0810bcb3c5a28378b4d75ea17bfed18a9b970cdb..7ab7e743d84365837d9887d3aa48ce4054fa6d67 100644
+--- a/dist/requests/media/adapter.js
++++ b/dist/requests/media/adapter.js
+@@ -1,9 +1,9 @@
+ import { __toESM } from "../../_virtual/_rolldown/runtime.js";
+-import { require_js2xml } from "../../node_modules/.pnpm/xml-js@1.6.11/node_modules/xml-js/lib/js2xml.js";
++import _xmlJsPkg from "xml-js";
+ import { backtickQuote, inputToString, rustRawStringLiteral, tripleDoubleQuote } from "../string-utils.js";
+ import { isMediaTypeSupported, resolveMediaAdapter } from "./resolve-adapter.js";
+ //#region src/requests/media/adapter.ts
+-var import_js2xml = /* @__PURE__ */ __toESM(require_js2xml(), 1);
++var import_js2xml = /* @__PURE__ */ { default: _xmlJsPkg.js2xml };
+ const defaultAdapters = {
+ 	"application/json": {
+ 		encode(data) {
+diff --git a/dist/requests/string-utils.js b/dist/requests/string-utils.js
+index 2964c6560362065c960c2d7ec9f932a35003e6f9..12f8417b81d20c9779b0b10cd0ec893669769e2a 100644
+--- a/dist/requests/string-utils.js
++++ b/dist/requests/string-utils.js
+@@ -1,7 +1,7 @@
+ import { __toESM } from "../_virtual/_rolldown/runtime.js";
+-import { require_js2xml } from "../node_modules/.pnpm/xml-js@1.6.11/node_modules/xml-js/lib/js2xml.js";
++import _xmlJsPkg from "xml-js";
+ //#region src/requests/string-utils.ts
+-var import_js2xml = /* @__PURE__ */ __toESM(require_js2xml(), 1);
++var import_js2xml = /* @__PURE__ */ { default: _xmlJsPkg.js2xml };
+ /**
+ * Convert input value to hardcoded string (with quotes)
+ */

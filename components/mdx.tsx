@@ -1,9 +1,11 @@
 import defaultMdxComponents from 'fumadocs-ui/mdx';
 import type { MDXComponents } from 'mdx/types';
+import { OpenAPIPage } from '@/components/openapi-page';
 
 export function getMDXComponents(components?: MDXComponents) {
   return {
     ...defaultMdxComponents,
+    OpenAPIPage,
     ...components,
   } satisfies MDXComponents;
 }

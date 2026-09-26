@@ -1,0 +1,9 @@
+{
+  "title": "Consent",
+  "description": "Browser leg of the MCP OAuth flow, driven by the web app's authorize screen. Not typically called directly by third-party integrations.",
+  "pages": [
+    "getConsentDetails",
+    "approveConsent",
+    "denyConsent"
+  ]
+}

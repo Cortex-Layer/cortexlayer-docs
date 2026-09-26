@@ -1,0 +1,44 @@
+---
+title: Hermes
+description: Connect Hermes to Cortex over MCP with an API key.
+icon: Bot
+---
+
+Hermes talks to Cortex over MCP, authenticated with an API key. Create one on the
+[**Setup**](https://www.cortexlayer.net/app/setup) or [**Keys**](https://www.cortexlayer.net/app/keys)
+page of the Cortex web app, then:
+
+```bash title="~/.hermes/.env"
+CORTEX_API_KEY=YOUR_API_KEY
+```
+
+```yaml title="~/.hermes/config.yaml"
+mcp_servers:
+  cortex:
+    url: https://mcp.cortexlayer.net/mcp
+    headers:
+      Authorization: "Bearer ${CORTEX_API_KEY}"
+```
+
+Check the connection:
+
+```bash
+hermes mcp test cortex
+```
+
+## What Hermes gets
+
+Five tools, all scoped to your account: `memory_add`, `memory_retrieve`, `memory_update`,
+`memory_delete` and `memory_relink`. The web dashboard is read-only, so adding, editing and
+deleting memories happens through Hermes (or another connected agent).
+
+## Try it
+
+1. Tell Hermes: *"Use Cortex to remember that I prefer dark mode."*
+2. In a new conversation, ask: *"What do I prefer for my editor theme?"*
+3. Open [Memory](https://www.cortexlayer.net/app/memory) or
+   [Graph](https://www.cortexlayer.net/app/graph) in the web app to see what was stored and how
+   memories link together.
+
+Self-hosting Cortex instead of using the hosted server? Swap `mcp.cortexlayer.net` for your own
+server's URL.

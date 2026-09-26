@@ -1,45 +1,66 @@
 # cortexlayer-docs
 
-This is a Next.js application generated with
-[Create Fumadocs](https://github.com/fuma-nama/fumadocs).
-
-Run development server:
+Developer docs for Cortex, at `docs.cortexlayer.net`. Built with
+[Fumadocs](https://fumadocs.dev) on Next.js (task 0081) — a separate app from
+`cortexlayer-frontend`, which runs on vinext (not Fumadocs-compatible).
 
 ```bash
-npm run dev
-# or
-pnpm dev
-# or
-yarn dev
+npm install
+npm run dev      # http://localhost:3000/docs
 ```
 
-Open http://localhost:3000 with your browser to see the result.
+## Content
 
-## Explore
+All docs content lives in `content/docs/*.mdx`, one folder per nav section, each with a
+`meta.json` controlling title/icon/page order:
 
-In the project, you can see:
+```
+content/docs/
+  index.mdx              Getting started
+  sdk/                    Hosted (CortexClient) + Embedded (Memory) + Mem0 migration
+  agents/                 Hermes, Claude Code
+  mcp/                    Generic "just the link" OAuth connect flow
+  api-reference/          Overview + endpoints (hand-maintained; see note below)
+```
 
-- `lib/source.ts`: Code for content source adapter, [`loader()`](https://fumadocs.dev/docs/headless/source-api) provides the interface to access your content.
-- `lib/layout.shared.tsx`: Shared options for layouts, optional but preferred to keep.
+Source of truth for code snippets: `cortexlayer-frontend/components/site/code-demo.tsx` (hero
+tabs) and `cortexlayer-python/README.md` (SDK behavior/method signatures) — keep docs content in
+sync with those rather than re-deriving snippets from memory.
 
-| Route                     | Description                                            |
-| ------------------------- | ------------------------------------------------------ |
-| `app/(home)`              | The route group for your landing page and other pages. |
-| `app/docs`                | The documentation layout and pages.                    |
-| `app/api/search/route.ts` | The Route Handler for search.                          |
+`llms.txt` / `llms-full.txt` and per-page OG images are generated automatically (scaffolded by
+`create-fumadocs-app`) — no separate maintenance needed when adding a page.
 
-### Fumadocs MDX
+### API reference
 
-Collections are defined with the [Macro API](https://fumadocs.dev/docs/mdx/macro) in `lib/source.ts`.
+`content/docs/api-reference/*.mdx` is hand-written against `cortex-backend/docs/cortex-api.md`,
+not generated from an OpenAPI spec — no spec exists yet (see task 0081 notes). When one is written
+and exported, swap these pages for a generated reference and update task 0081's acceptance
+criteria.
 
-Read the [Introduction](https://fumadocs.dev/docs/mdx) for further details.
+## Deploy (Cloudflare Workers)
 
-## Learn More
+Scaffolded with [`@opennextjs/cloudflare`](https://opennext.js.org/cloudflare) (standard adapter
+for Next.js on Workers — vinext's Cloudflare setup, used by `cortexlayer-frontend`, doesn't apply
+here since this is a plain Next.js app).
 
-To learn more about Next.js and Fumadocs, take a look at the following
-resources:
+```bash
+npm run deploy     # opennextjs-cloudflare build && deploy
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js
-  features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-- [Fumadocs](https://fumadocs.dev) - learn about Fumadocs
+Needs, one-time, before the first deploy:
+
+1. `npx wrangler login` (Cloudflare account access).
+2. `docs.cortexlayer.net` added as a custom domain to this Worker — either add the route in
+   `wrangler.jsonc` (already there) and deploy, then attach the domain from the dashboard
+   (**Workers & Pages → cortexlayer-docs → Custom Domains**), or attach it first and deploy after.
+3. DNS: `docs` CNAME/record on `cortexlayer.net`, per Cloudflare's custom-domain instructions once
+   the Worker exists.
+
+`npm run preview` builds and runs the Worker locally via `wrangler dev` first, if you want to check
+the Workers build before pushing.
+
+## Learn more
+
+- [Fumadocs docs](https://fumadocs.dev/docs/ui)
+- [Next.js docs](https://nextjs.org/docs)
+- [OpenNext Cloudflare adapter](https://opennext.js.org/cloudflare)

@@ -1,0 +1,26 @@
+---
+title: Claude Code
+description: Add Cortex as an MCP server to Claude Code with one command.
+icon: Terminal
+---
+
+Claude Code (the CLI) connects to Cortex as an MCP server, authenticated with an API key sent as
+a header. Create a key on the [**Setup**](https://www.cortexlayer.net/app/setup) or
+[**Keys**](https://www.cortexlayer.net/app/keys) page of the Cortex web app, then:
+
+```bash
+claude mcp add --transport http cortex \
+  https://mcp.cortexlayer.net/mcp \
+  --header "Authorization: Bearer YOUR_API_KEY"
+```
+
+That's it — Cortex shows up as an MCP server the next time you start Claude Code, with five tools:
+`memory_add`, `memory_retrieve`, `memory_update`, `memory_delete` and `memory_relink`.
+
+Self-hosting Cortex instead of using the hosted server? Swap `https://mcp.cortexlayer.net/mcp` for
+your own server's URL.
+
+<Callout title="Not Claude Code?">
+  Claude on the web, mobile or desktop app connects differently — no API key, just the server URL
+  approved over OAuth. See [Connect Claude Desktop, Cursor or any MCP client](/docs/mcp/connect).
+</Callout>

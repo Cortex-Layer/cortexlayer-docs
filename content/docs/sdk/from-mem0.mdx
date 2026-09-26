@@ -1,0 +1,24 @@
+---
+title: Coming from Mem0
+description: What maps directly, and what's different, if you already know Mem0.
+---
+
+| Mem0 | cortexlayer |
+|---|---|
+| `Memory()` (embedded) | `Memory()` |
+| `MemoryClient(api_key=...)` (hosted) | `CortexClient(api_key=...)` |
+| `m.add(messages, user_id=...)` | `m.add(text, user_id=...)` |
+| `m.search(query, user_id=...)` | `m.search(query, user_id=...)` — results add `via` / `linked_from` provenance |
+| `m.get_all(...)` / `m.get(id)` | `m.get_all()` / `m.get(id)` |
+| `m.update(id, data)` / `m.delete(id)` / `m.delete_all(...)` | `m.update(id, text)` / `m.delete(id)` / `m.delete_all(user_id=)` |
+| — | `m.relink()` — Cortex links pages in a batch pass, never per insert |
+
+Differences worth knowing:
+
+- Cortex takes plain text, not chat-message lists.
+- The default `raw` engine stores your text as small pages and links them by shared entities, so
+  **adding never needs an LLM**. [`Memory(backend="facts")`](/docs/sdk/embedded#fact-memory-memorybackendfacts)
+  is the Mem0-style engine that extracts facts with an LLM, for when you want that behavior
+  specifically.
+- On [`CortexClient`](/docs/sdk/hosted) there is no `user_id` argument: each API key belongs to
+  exactly one user.

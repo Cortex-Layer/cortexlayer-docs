@@ -1,0 +1,9 @@
+{
+  "title": "Keys",
+  "description": "Self-serve API key management. Web session only.",
+  "pages": [
+    "listKeys",
+    "createKey",
+    "revokeKey"
+  ]
+}

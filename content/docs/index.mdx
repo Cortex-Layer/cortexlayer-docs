@@ -1,13 +1,90 @@
 ---
-title: Hello World
-description: Your first document
+title: Getting started
+description: What Cortex is, the two ways to use it, and your first memory.
+icon: Rocket
 ---
 
-Welcome to the docs! You can start writing documents in `/content/docs`.
+Cortex is a memory layer for AI agents. It stores memories as linked pages and retrieves with
+vector search **plus link-expansion**, so multi-hop facts come back without over-fetching a large
+top-k — ask "who directed Inception?" and get back not just that page, but the linked page about
+where the director was born, because the two pages share an entity.
 
-## What is Next?
+There are two ways to run it, with the same method names and result shapes:
 
 <Cards>
-  <Card title="Learn more about Next.js" href="https://nextjs.org/docs" />
-  <Card title="Learn more about Fumadocs" href="https://fumadocs.dev" />
+  <Card title="Hosted — CortexClient" href="/docs/sdk/hosted">
+    Talk to a running Cortex server (the hosted one, or your own). No local storage, no models to
+    download — an API key and `pip install cortexlayer`.
+  </Card>
+  <Card title="Embedded — Memory" href="/docs/sdk/embedded">
+    The engine runs in your own process. No server, no API key, nothing leaves your machine.
+    `pip install "cortexlayer[local]"`.
+  </Card>
 </Cards>
+
+## Quickstart: hosted
+
+```bash
+pip install cortexlayer
+```
+
+```python
+import os
+from cortexlayer import CortexClient
+
+client = CortexClient(api_key=os.getenv("CORTEX_API_KEY", "sk-..."))
+
+client.add("I moved to Lisbon in March.")
+
+results = client.search("Where does Alice live?", limit=5)
+print(results)
+```
+
+Create a key in the [Cortex web app](https://www.cortexlayer.net/app/keys) (**Keys**). Full
+reference: [Hosted / `CortexClient`](/docs/sdk/hosted).
+
+## Quickstart: embedded
+
+```bash
+pip install "cortexlayer[local]"
+```
+
+```python
+from cortexlayer import Memory
+
+m = Memory("./cortex-data")
+
+m.add("Christopher Nolan directed Inception.", user_id="alice")
+m.add("Christopher Nolan was born in London in 1970.", user_id="alice")
+m.relink(user_id="alice")  # batch linking pass — run after adding several
+
+for r in m.search("Who directed Inception?", user_id="alice", limit=1):
+    print(r.title, "-", r.via)
+
+# Christopher Nolan directed Inception. - direct
+# Christopher Nolan was born in London in 1970. - link   <- pulled in via the shared entity
+```
+
+No server, no API key, nothing to sign up for — it runs fully on your machine. Full reference:
+[Embedded / `Memory`](/docs/sdk/embedded).
+
+## Connect an agent
+
+Already have a Cortex account and want an agent to use it, rather than writing Python yourself?
+
+<Cards>
+  <Card title="Hermes" href="/docs/agents/hermes">
+    Real, working config for the Hermes agent.
+  </Card>
+  <Card title="Claude Code" href="/docs/agents/claude-code">
+    `claude mcp add ...` — one command.
+  </Card>
+  <Card title="Claude Desktop, Cursor, any MCP client" href="/docs/mcp/connect">
+    Paste the server URL and approve over OAuth. No key to create or rotate.
+  </Card>
+</Cards>
+
+## API reference
+
+Building against the REST API directly (what the web app and the Python client both use)? See the
+[API reference](/docs/api-reference).

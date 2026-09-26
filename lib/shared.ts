@@ -1,14 +1,14 @@
 import { createGetUrl } from 'fumadocs-core/source';
 
-export const appName = 'My App';
+export const appName = 'Cortex Layer';
+export const siteUrl = 'https://docs.cortexlayer.net';
 export const docsRoute = '/docs';
 export const docsImageRoute = '/og/docs';
 export const docsContentRoute = '/llms.mdx/docs';
 
-// fill this with your actual GitHub info, for example:
 export const gitConfig = {
-  user: 'fuma-nama',
-  repo: 'fumadocs',
+  user: 'mikeest1972',
+  repo: 'cortexlayer-python',
   branch: 'main',
 };
 

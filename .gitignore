@@ -3,12 +3,16 @@
 
 # generated content
 .source
+# derived from openapi/cortex-api.yaml by scripts/build-openapi-json.mts (predev/prebuild)
+/openapi/cortex-api.json
 
 # test & build
 /coverage
 /.next/
 /out/
 /build
+/.open-next/
+/.wrangler/
 *.tsbuildinfo
 
 # misc

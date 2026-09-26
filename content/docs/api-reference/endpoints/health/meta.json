@@ -1,0 +1,7 @@
+{
+  "title": "Health",
+  "description": "Unauthenticated liveness probe.",
+  "pages": [
+    "health"
+  ]
+}

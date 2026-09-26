@@ -1,0 +1,59 @@
+---
+title: Overview
+description: REST API used by the web app and the Python client — auth, hosts, CORS, errors.
+---
+
+<Callout title="Generated from a hand-written spec" type="info">
+  `cortex-backend`'s REST API is hand-rolled on Starlette, not FastAPI, so nothing auto-derives a
+  schema from the route code. [Endpoints](/docs/api-reference/endpoints) is generated from
+  `openapi/cortex-api.yaml`, an OpenAPI 3.1 spec written against the actual route handlers — but
+  it isn't checked by the server at request time, so if something here ever looks stale, the
+  [`cortexlayer` Python client](/docs/sdk/hosted) is the more actively tested surface.
+</Callout>
+
+If you're using Python, reach for [`CortexClient`](/docs/sdk/hosted) instead of calling this
+directly — it wraps every endpoint below with retries, typed results and error classes. This page
+is for anything else: a different language, a browser app, or curl.
+
+## Hosts
+
+| Host | Audience | Paths |
+|---|---|---|
+| `https://mcp.cortexlayer.net` | agents (Hermes, Claude, MCP clients) | `/mcp`, `/authorize`, `/token`, `/consent` |
+| `https://api.cortexlayer.net` | everything else (the web app, the Python client, curl) | `/v1/*` |
+
+## Auth
+
+Every `/v1/*` call sends `Authorization: Bearer <credential>`. Cortex accepts, in order: an OAuth
+access token, a static API key, or (on `/v1/*` only, never `/mcp`) a Firebase ID token from web
+sign-in. Resolution order for whose data you're touching: credential's user > explicit `user_id`
+param > server default.
+
+| Situation | Result |
+|---|---|
+| missing/invalid key | `401 {"error": ...}` |
+| `user_id` param ≠ key's user | `403 {"error": ...}` |
+| malformed `user_id` | `400 {"error": ...}` |
+
+## CORS
+
+Browser requests need an allowlisted `Origin`; allowlisted origins get
+`Access-Control-Allow-Origin` and a preflight (`OPTIONS → 204`). Server-to-server calls (no
+`Origin` header) aren't affected.
+
+## Errors
+
+JSON body `{"error": "..."}` on every non-2xx response. Common statuses across endpoints:
+
+| Status | Meaning |
+|---|---|
+| `400` | bad request body or query param |
+| `401` | missing/invalid/revoked credential |
+| `403` | credential valid but not allowed to do this (wrong user, session-only route, disabled feature) |
+| `404` | unknown id, or another user's id (always looks the same — never leaks existence) |
+| `409` | conflict (e.g. re-claiming an already-claimed account) |
+| `413` | request body too large |
+| `429` | rate limited |
+| `5xx` | server or backend failure; details are logged server-side, never returned in the body |
+
+See [endpoints](/docs/api-reference/endpoints) for the full list.

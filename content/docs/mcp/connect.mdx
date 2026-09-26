@@ -1,0 +1,67 @@
+---
+title: Connect Claude Desktop, Cursor or any MCP client
+description: Just the link, not an SDK rewrite — paste the server URL and approve over OAuth.
+icon: Plug
+---
+
+Cortex is an MCP server at:
+
+```
+https://mcp.cortexlayer.net/mcp
+```
+
+Point any MCP client at that URL. What happens next depends on whether the client supports OAuth
+(no key needed) or expects a static key in its config.
+
+## Claude (web, mobile, desktop)
+
+Uses your Cortex account directly. No API key, no client ID to paste anywhere.
+
+1. In Claude, open **Settings → Connectors** and add a custom connector.
+2. Paste the server URL above and add it. Leave the advanced settings empty.
+3. Claude opens a page on the Cortex web app asking you to approve the connection. Check that it
+   shows your account, then choose **Allow**.
+4. Turn the connector on in a chat. The first time, Claude asks permission to use each Cortex
+   tool.
+
+If your version of Claude asks for a client ID under Advanced settings, most register
+themselves automatically — check the [Setup page](https://www.cortexlayer.net/app/setup) in the
+web app (signed in) for one specific to your account, and leave the secret field blank.
+
+## Cursor and other MCP clients (`mcp.json`)
+
+Clients that read a JSON config and don't do the OAuth dance yet take a static API key instead.
+Create one on the [**Setup**](https://www.cortexlayer.net/app/setup) or
+[**Keys**](https://www.cortexlayer.net/app/keys) page of the Cortex web app, then add:
+
+```json title="mcp.json"
+{
+  "mcpServers": {
+    "cortex": {
+      "url": "https://mcp.cortexlayer.net/mcp",
+      "headers": { "Authorization": "Bearer YOUR_API_KEY" }
+    }
+  }
+}
+```
+
+Claude Code and Hermes are two API-key clients with their own quickstart pages:
+[Claude Code](/docs/agents/claude-code), [Hermes](/docs/agents/hermes).
+
+## What your agent gets
+
+Five tools, all scoped to your account: `memory_add`, `memory_retrieve`, `memory_update`,
+`memory_delete` and `memory_relink`. The web dashboard is read-only — adding, editing and deleting
+memories happens through a connected agent.
+
+## Check that it works
+
+1. Tell your agent: *"Use Cortex to remember that I prefer dark mode."*
+2. In a new conversation, ask: *"What do I prefer for my editor theme?"*
+3. Open [Memory](https://www.cortexlayer.net/app/memory) or
+   [Graph](https://www.cortexlayer.net/app/graph) in the web app to see what was stored and how
+   memories link together.
+
+Used Cortex with an API key before and now want to sign in with an account? Sign in and attach the
+old key once on the [Memory](https://www.cortexlayer.net/app/memory) page to bring those memories
+into the signed-in account.

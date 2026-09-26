@@ -1,0 +1,5 @@
+{
+  "title": "SDK",
+  "icon": "Package",
+  "pages": ["hosted", "embedded", "from-mem0"]
+}
