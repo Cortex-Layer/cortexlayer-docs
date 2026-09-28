@@ -454,8 +454,8 @@ paths:
                 top_k:
                   type: integer
                   minimum: 1
-                  maximum: 20
-                  default: 4
+                  maximum: 50
+                  default: 50
                 expand_links:
                   type: boolean
                   default: true
@@ -498,7 +498,7 @@ paths:
                         via: "link"
                         linked_from: "a91f2c"
         "400":
-          description: "`query` missing/blank, `top_k` not an integer 1..20, or `expand_links` not a boolean."
+          description: "`query` missing/blank, `top_k` not an integer 1..50, or `expand_links` not a boolean."
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
