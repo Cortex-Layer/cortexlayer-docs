@@ -17,16 +17,10 @@ and saved after, with no tool call for the agent to remember to make.
 
 ```bash
 hermes plugins install cortexlayer
+hermes plugins enable cortexlayer
 ```
 
-<Callout title="Not in the catalog yet">
-  Until the plugin's catalog PR is merged, install it manually as a directory
-  plugin instead — clone the repo's `plugins/memory/cortexlayer/` into
-  `$HERMES_HOME/plugins/cortexlayer/` (or `./.hermes/plugins/cortexlayer/` for a project-local
-  install; the directory name is what activates it, so it must be exactly `cortexlayer`) and run
-  `pip install cortexlayer` in whatever Python environment Hermes runs in. Full steps in the
-  [repo README](https://github.com/Cortex-Layer/cortexlayer-hermes-plugin#install).
-</Callout>
+`install` pulls in the plugin's Python dependency on its own — no separate `pip install` step.
 
 Then run `hermes memory setup`, select `cortexlayer`, and paste an API key created on the
 [**Setup**](https://www.cortexlayer.net/app/setup) or [**Keys**](https://www.cortexlayer.net/app/keys)
